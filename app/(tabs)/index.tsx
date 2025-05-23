@@ -1,75 +1,125 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import * as Location from 'expo-location';
+import { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useDispatch, useSelector } from 'react-redux';
+import { weatherService } from '../../services/weatherService';
+import { RootState } from '../../store';
+import { setCurrentLocation, setCurrentWeather, setError, setLoading } from '../../store/weatherSlice';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+export default function CurrentWeatherScreen() {
+  const dispatch = useDispatch();
+  const { currentWeather, loading, error, currentLocation } = useSelector(
+    (state: RootState) => state.weather
+  );
 
-export default function HomeScreen() {
+  useEffect(() => {
+    const getLocation = async () => {
+      try {
+        dispatch(setLoading(true));
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          dispatch(setError('Location permission denied'));
+          return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({});
+        const { latitude, longitude } = location.coords;
+        
+        // Get location name
+        const [address] = await Location.reverseGeocodeAsync({
+          latitude,
+          longitude,
+        });
+
+        dispatch(setCurrentLocation({
+          lat: latitude,
+          lon: longitude,
+          name: address?.city || 'Current Location',
+        }));
+
+        const weather = await weatherService.getCurrentWeather(latitude, longitude);
+        dispatch(setCurrentWeather(weather));
+      } catch (err) {
+        dispatch(setError('Failed to get weather data'));
+      } finally {
+        dispatch(setLoading(false));
+      }
+    };
+
+    getLocation();
+  }, [dispatch]);
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.error}>{error}</Text>
+      </View>
+    );
+  }
+
+  if (!currentWeather) {
+    return (
+      <View style={styles.container}>
+        <Text>No weather data available</Text>
+      </View>
+    );
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <View style={styles.container}>
+      <Text style={styles.location}>{currentLocation?.name}</Text>
+      <Text style={styles.temperature}>{Math.round(currentWeather.temp)}°C</Text>
+      <Text style={styles.description}>
+        {currentWeather.weather[0].description}
+      </Text>
+      <View style={styles.details}>
+        <Text>Feels like: {Math.round(currentWeather.feels_like)}°C</Text>
+        <Text>Humidity: {currentWeather.humidity}%</Text>
+        <Text>Wind: {currentWeather.wind_speed} m/s</Text>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    padding: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  location: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 10,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  temperature: {
+    fontSize: 72,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  description: {
+    fontSize: 20,
+    marginBottom: 20,
+    textTransform: 'capitalize',
+  },
+  details: {
+    width: '100%',
+    padding: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 10,
+    gap: 10,
+  },
+  error: {
+    color: 'red',
+    fontSize: 16,
   },
 });
